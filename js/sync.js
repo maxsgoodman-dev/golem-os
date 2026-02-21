@@ -40,18 +40,18 @@ function gisLoaded() {
     maybeEnableButtons();
 }
 
-function maybeEnableButtons() {
-    if (gapiInited && gisInited) {
-        document.getElementById('auth-btn').style.display = 'block';
-    }
-}
-
 // Auth Handlers
 function handleAuthClick() {
     tokenClient.callback = async (resp) => {
         if (resp.error !== undefined) {
             throw (resp);
         }
+
+        // Cache the token for 1 hour (Google access tokens usually live for 1 hour)
+        const expirationTime = new Date().getTime() + (resp.expires_in * 1000);
+        localStorage.setItem('gdrive_access_token', resp.access_token);
+        localStorage.setItem('gdrive_token_expires_at', expirationTime);
+
         document.getElementById('auth-btn').style.display = 'none';
         document.getElementById('signout-btn').style.display = 'block';
         await loadStateFromDrive();
@@ -66,11 +66,46 @@ function handleAuthClick() {
     }
 }
 
+async function trySilentAuth() {
+    const cachedToken = localStorage.getItem('gdrive_access_token');
+    const expiresAt = localStorage.getItem('gdrive_token_expires_at');
+
+    if (cachedToken && expiresAt) {
+        if (new Date().getTime() < parseInt(expiresAt)) {
+            // Token is still valid, apply it automatically
+            gapi.client.setToken({ access_token: cachedToken });
+            document.getElementById('auth-btn').style.display = 'none';
+            document.getElementById('signout-btn').style.display = 'block';
+            await loadStateFromDrive();
+            return true;
+        } else {
+            // Token expired, clear it
+            localStorage.removeItem('gdrive_access_token');
+            localStorage.removeItem('gdrive_token_expires_at');
+        }
+    }
+    return false;
+}
+
+async function maybeEnableButtons() {
+    if (gapiInited && gisInited) {
+        const silentlyAuthenticated = await trySilentAuth();
+        if (!silentlyAuthenticated) {
+            document.getElementById('auth-btn').style.display = 'block';
+        }
+    }
+}
+
 function handleSignoutClick() {
     const token = gapi.client.getToken();
     if (token !== null) {
         google.accounts.oauth2.revoke(token.access_token);
         gapi.client.setToken('');
+
+        // Clear cached token
+        localStorage.removeItem('gdrive_access_token');
+        localStorage.removeItem('gdrive_token_expires_at');
+
         document.getElementById('auth-btn').style.display = 'block';
         document.getElementById('signout-btn').style.display = 'none';
     }
