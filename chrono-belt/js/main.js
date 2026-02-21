@@ -38,8 +38,13 @@ window.views = {
 
 // Functions
 window.renderView = function (viewName) {
-    if (window.views[viewName]) {
-        contentArea.innerHTML = window.views[viewName];
+    const viewContent = window.views[viewName];
+    if (viewContent) {
+        if (typeof viewContent === 'function') {
+            contentArea.innerHTML = viewContent();
+        } else {
+            contentArea.innerHTML = viewContent;
+        }
     } else {
         contentArea.innerHTML = '<h2>404 - View Not Found</h2>';
     }
